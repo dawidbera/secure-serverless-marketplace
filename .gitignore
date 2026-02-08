@@ -1,0 +1,34 @@
+# Maven
+target/
+*.jar
+*.war
+*.zip
+
+# AWS SAM
+.aws-sam/
+packaged.yaml
+
+# LocalStack
+localstack_data/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GitHub Repo Defaults
+# Compiled class file
+*.class
+# Log file
+*.log
+# BlueJ files
+*.ctxt
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+# virtual machine crash logs
+hs_err_pid*
+replay_pid*

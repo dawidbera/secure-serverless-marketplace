@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Secure Serverless Marketplace API
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: java17
+
+Resources:
+  ProductsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+
+  GetAllProductsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.marketplace.products.GetProductsHandler::handleRequest
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProductsTable
+      Events:
+        GetProducts:
+          Type: Api
+          Properties:
+            Path: /products
+            Method: get
+
+Outputs:
+  MarketplaceApi:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/products/"
