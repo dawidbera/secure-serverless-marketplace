@@ -49,3 +49,8 @@ curl -k https://localhost:4566/restapis/<API_ID>/Prod/_user_request_/products
 - **DynamoDB:** Single-table design, Optimistic Locking.
 - **Security:** KMS Encryption, Secrets Rotation.
 - **Optimization:** Lambda SnapStart, Layers.
+
+## 🧠 Technical Lessons Learned (Gotchas)
+- **Single Table Design:** Using `PK` and `SK` prefixes (e.g., `PROD#<id>`) allows for flexible querying within a single table, reducing the need for multiple joins.
+- **Java in Serverless:** Shaded JARs are essential for Lambda functions to include all necessary dependencies (like AWS SDK for DynamoDB).
+- **LocalStack Compatibility:** Always use `awslocal` or provide the `--endpoint-url` when testing locally to ensure requests are routed to the container instead of the real AWS.

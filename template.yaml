@@ -1,7 +1,12 @@
+# AWS SAM template for the Secure Serverless Marketplace
+# This file defines the infrastructure as code, including DynamoDB tables, 
+# Lambda functions, and API Gateway endpoints.
+
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Secure Serverless Marketplace API
 
+# Shared configuration for all serverless functions
 Globals:
   Function:
     Timeout: 30
@@ -9,13 +14,24 @@ Globals:
     Runtime: java17
 
 Resources:
+  # DynamoDB Table using Single Table Design
   ProductsTable:
-    Type: AWS::Serverless::SimpleTable
+    Type: AWS::DynamoDB::Table
     Properties:
-      PrimaryKey:
-        Name: id
-        Type: String
+      TableName: Products
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH # Partition Key (e.g., PROD#<id>)
+        - AttributeName: SK
+          KeyType: RANGE # Sort Key (e.g., METADATA)
+      BillingMode: PAY_PER_REQUEST
 
+  # Lambda function to retrieve all products
   GetAllProductsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -24,6 +40,10 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref ProductsTable
+      Policies:
+        # Least privilege: Read-only access to the products table
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProductsTable
       Events:
         GetProducts:
           Type: Api
@@ -31,6 +51,47 @@ Resources:
             Path: /products
             Method: get
 
+  # Lambda function to create a new product
+  CreateProductFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.marketplace.products.CreateProductHandler::handleRequest
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProductsTable
+      Policies:
+        # Least privilege: Write access to the products table
+        - DynamoDBWritePolicy:
+            TableName: !Ref ProductsTable
+      Events:
+        CreateProduct:
+          Type: Api
+          Properties:
+            Path: /products
+            Method: post
+
+  # Lambda function to retrieve a single product by ID
+  GetProductByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.marketplace.products.GetProductByIdHandler::handleRequest
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProductsTable
+      Policies:
+        # Least privilege: Read-only access to the products table
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProductsTable
+      Events:
+        GetProductById:
+          Type: Api
+          Properties:
+            Path: /products/{id}
+            Method: get
+
+# Output values exported from the stack
 Outputs:
   MarketplaceApi:
     Description: "API Gateway endpoint URL"

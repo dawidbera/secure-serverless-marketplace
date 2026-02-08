@@ -1,18 +1,23 @@
+# Docker Compose configuration for local development
+# This file sets up LocalStack to emulate AWS services and Redis for caching.
+
 version: "3.8"
 services:
+  # LocalStack: Provides local emulated AWS environment (DynamoDB, Lambda, KMS, etc.)
   localstack:
     container_name: localstack-main
     image: localstack/localstack
     ports:
-      - "127.0.0.1:4566:4566"
-      - "127.0.0.1:4510-4559:4510-4559"
+      - "127.0.0.1:4566:4566"            # Edge service port
+      - "127.0.0.1:4510-4559:4510-4559"  # Range for individual services
     environment:
       - DEBUG=0
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      - "./localstack_data:/var/lib/localstack"
+      - "./localstack_data:/var/lib/localstack" # Persist localstack data
       - "/var/run/docker.sock:/var/run/docker.sock"
 
+  # Redis: Used for lazy loading and write-through caching strategies
   redis:
     image: redis:alpine
     container_name: marketplace-redis
