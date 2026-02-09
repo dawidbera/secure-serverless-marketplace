@@ -6,12 +6,19 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.marketplace.model.Product;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import com.amazonaws.xray.interceptors.TracingInterceptor;
+import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ScanRequest;
 import software.amazon.awssdk.services.dynamodb.model.ScanResponse;
+import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.kms.model.DecryptRequest;
+import software.amazon.awssdk.services.kms.model.DecryptResponse;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +29,7 @@ import java.util.Map;
 public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     private final DynamoDbClient dynamoDbClient;
+    private final KmsClient kmsClient;
     private final String tableName;
     private final ObjectMapper objectMapper;
 
@@ -29,7 +37,18 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
      * Initializes the DynamoDB client and other dependencies.
      */
     public GetProductsHandler() {
-        this.dynamoDbClient = DynamoDbClient.builder().build();
+        ClientOverrideConfiguration xRayConfig = ClientOverrideConfiguration.builder()
+                .addExecutionInterceptor(new TracingInterceptor())
+                .build();
+
+        this.dynamoDbClient = DynamoDbClient.builder()
+                .overrideConfiguration(xRayConfig)
+                .build();
+
+        this.kmsClient = KmsClient.builder()
+                .overrideConfiguration(xRayConfig)
+                .build();
+
         this.tableName = System.getenv("TABLE_NAME");
         this.objectMapper = new ObjectMapper();
     }
@@ -62,6 +81,21 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
                 product.setName(item.get("name").s());
                 product.setPrice(Double.parseDouble(item.get("price").n()));
                 product.setCategory(item.get("category").s());
+                if (item.containsKey("version")) {
+                    product.setVersion(Integer.parseInt(item.get("version").n()));
+                }
+
+                // KMS Decryption for sensitive supplier email
+                if (item.containsKey("supplierEmail")) {
+                    byte[] decodedCiphertext = Base64.getDecoder().decode(item.get("supplierEmail").s());
+                    DecryptRequest decryptRequest = DecryptRequest.builder()
+                            .ciphertextBlob(SdkBytes.fromByteArray(decodedCiphertext))
+                            .build();
+                    
+                    DecryptResponse decryptResponse = kmsClient.decrypt(decryptRequest);
+                    product.setSupplierEmail(decryptResponse.plaintext().asUtf8String());
+                }
+
                 products.add(product);
             }
 

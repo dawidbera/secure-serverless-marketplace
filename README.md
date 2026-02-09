@@ -1,6 +1,6 @@
 # Secure Serverless Marketplace
 
-A high-performance, secure backend for a digital marketplace designed to master **modern cloud-native patterns** domains.
+A high-performance, secure backend for a digital marketplace leveraging modern cloud-native patterns.
 
 ## 🏗 Architecture
 - **Compute:** AWS Lambda (Java 17)
@@ -45,7 +45,7 @@ awslocal apigateway get-rest-apis
 curl -k https://localhost:4566/restapis/<API_ID>/Prod/_user_request_/products
 ```
 
-## 📚 Key Technical Features
+## 🛠 Key Technical Features
 - **DynamoDB:** Single-table design, Optimistic Locking.
 - **Security:** KMS Encryption, Secrets Rotation.
 - **Optimization:** Lambda SnapStart, Layers.

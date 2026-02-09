@@ -12,8 +12,25 @@ Globals:
     Timeout: 30
     MemorySize: 512
     Runtime: java17
+    Tracing: Active # Enable X-Ray tracing for Lambdas
+  Api:
+    TracingEnabled: true # Enable X-Ray tracing for API Gateway
 
 Resources:
+  # API Gateway with Lambda Authorizer
+  MarketplaceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      TracingEnabled: true
+      Auth:
+        DefaultAuthorizer: MyLambdaAuthorizer
+        Authorizers:
+          MyLambdaAuthorizer:
+            FunctionArn: !GetAtt ApiAuthorizerFunction.Arn
+            Identity:
+              Header: Authorization
+
   # DynamoDB Table using Single Table Design
   ProductsTable:
     Type: AWS::DynamoDB::Table
@@ -31,6 +48,13 @@ Resources:
           KeyType: RANGE # Sort Key (e.g., METADATA)
       BillingMode: PAY_PER_REQUEST
 
+  # Lambda function for API Authorization
+  ApiAuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.marketplace.auth.LambdaAuthorizerHandler::handleRequest
+
   # Lambda function to retrieve all products
   GetAllProductsFunction:
     Type: AWS::Serverless::Function
@@ -40,16 +64,21 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref ProductsTable
+          KMS_KEY_ID: !Ref EncryptionKey
       Policies:
-        # Least privilege: Read-only access to the products table
         - DynamoDBReadPolicy:
             TableName: !Ref ProductsTable
+        - KMSDecryptPolicy:
+            KeyId: !Ref EncryptionKey
       Events:
         GetProducts:
           Type: Api
           Properties:
             Path: /products
             Method: get
+            RestApiId: !Ref MarketplaceApi
+            Auth:
+              Authorizer: NONE # List products is public
 
   # Lambda function to create a new product
   CreateProductFunction:
@@ -60,16 +89,31 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref ProductsTable
+          KMS_KEY_ID: !Ref EncryptionKey
+          LOGISTICS_SECRET_ARN: !Ref LogisticsApiKey
       Policies:
-        # Least privilege: Write access to the products table
         - DynamoDBWritePolicy:
             TableName: !Ref ProductsTable
+        - KMSEncryptPolicy:
+            KeyId: !Ref EncryptionKey
+        - SecretsManagerReadWritePolicy:
+            SecretArn: !Ref LogisticsApiKey
       Events:
         CreateProduct:
           Type: Api
           Properties:
             Path: /products
             Method: post
+            RestApiId: !Ref MarketplaceApi
+            # Uses DefaultAuthorizer (MyLambdaAuthorizer)
+
+  # External API Key stored in Secrets Manager
+  LogisticsApiKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: LogisticsApiKey
+      Description: "API key for the external logistics provider"
+      SecretString: '{"api_key": "super-secret-key-123"}'
 
   # Lambda function to retrieve a single product by ID
   GetProductByIdFunction:
@@ -80,16 +124,37 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref ProductsTable
+          KMS_KEY_ID: !Ref EncryptionKey
       Policies:
-        # Least privilege: Read-only access to the products table
         - DynamoDBReadPolicy:
             TableName: !Ref ProductsTable
+        - KMSDecryptPolicy:
+            KeyId: !Ref EncryptionKey
       Events:
         GetProductById:
           Type: Api
           Properties:
             Path: /products/{id}
             Method: get
+            RestApiId: !Ref MarketplaceApi
+            Auth:
+              Authorizer: NONE # Get product by ID is public
+
+  # KMS Key for application-level encryption of PII
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting sensitive marketplace data
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: '*'
 
 # Output values exported from the stack
 Outputs:
