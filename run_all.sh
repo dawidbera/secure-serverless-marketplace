@@ -22,8 +22,12 @@ check_requirement sam
 check_requirement awslocal
 
 echo -e "${BLUE}--- 2. Cleaning up previous session ---${NC}"
-# Kill any existing SAM local processes
+# Kill any existing SAM local processes and free up port 3001
 pkill -f "sam local start-api" || true
+# Explicitly kill whatever is on port 3001 (if lsof is available)
+if command -v lsof &> /dev/null; then
+    lsof -ti:3001 | xargs kill -9 2>/dev/null || true
+fi
 # Wait a moment for the port to be released
 sleep 2
 
@@ -73,10 +77,10 @@ if ! awslocal s3 ls s3://marketplace-assets-000000000000 >/dev/null 2>&1; then
 fi
 
 echo -e "${BLUE}--- 8. Starting SAM Local API (in background) ---${NC}"
-# Start the API and redirect logs to a file. Use nohup to ensure it stays up.
-nohup sam local start-api --region us-east-1 --env-vars env.json --port 3001 > sam-api-start.log 2>&1 &
+# Start the API on 0.0.0.0 to be accessible from Docker containers
+nohup sam local start-api --region us-east-1 --env-vars env.json --port 3001 --host 0.0.0.0 > sam-api-start.log 2>&1 &
 SAM_PID=$!
-sleep 2 # Give it a moment to actually start the process
+sleep 5 # Give it more time to bind to 0.0.0.0
 
 echo "Waiting for API to start (port 3001)..."
 # Health check loop
@@ -109,6 +113,16 @@ KMS_KEY_ID=dummy \
 mvn test
 
 echo -e "${BLUE}--- 10. Running shell test scripts ---${NC}"
+chmod +x scripts/*.sh
+echo -e "\n${GREEN}Running test_cache.sh:${NC}"
+./scripts/test_cache.sh
+
+echo -e "\n${GREEN}Running test_assets.sh:${NC}"
+./scripts/test_assets.sh
+
+echo -e "\n${BLUE}--- 11. Running Load Tests (k6 via Docker) ---${NC}"
+echo "Running performance test for approximately 2 minutes against $DOCKER_HOST_IP..."
+docker run --rm -e API_URL="http://$DOCKER_HOST_IP:3001" -v $(pwd)/load-tests:/io -i loadimpact/k6 run /io/performance-test.js
 
 echo -e "\n${BLUE}--- Done! API is still running in the background (PID: $SAM_PID) ---${NC}"
 echo "You can stop it by running: kill $SAM_PID"
