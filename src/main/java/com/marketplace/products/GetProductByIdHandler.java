@@ -36,17 +36,30 @@ public class GetProductByIdHandler implements RequestHandler<APIGatewayProxyRequ
      * Initializes the DynamoDB client and other dependencies.
      */
     public GetProductByIdHandler() {
+        this(null, null, null);
+    }
+
+    /**
+     * Constructor for dependency injection, used primarily for testing.
+     *
+     * @param dynamoDbClient The DynamoDB client.
+     * @param kmsClient      The KMS client.
+     * @param tableName      The DynamoDB table name.
+     */
+    GetProductByIdHandler(DynamoDbClient dynamoDbClient, KmsClient kmsClient, String tableName) {
         ClientOverrideConfiguration xRayConfig = ClientUtils.getXRayConfig();
 
-        this.dynamoDbClient = ClientUtils.configureEndpoint(DynamoDbClient.builder())
+        this.dynamoDbClient = dynamoDbClient != null ? dynamoDbClient : 
+                ClientUtils.configureEndpoint(DynamoDbClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.kmsClient = ClientUtils.configureEndpoint(KmsClient.builder())
+        this.kmsClient = kmsClient != null ? kmsClient : 
+                ClientUtils.configureEndpoint(KmsClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.tableName = System.getenv("TABLE_NAME");
+        this.tableName = tableName != null ? tableName : System.getenv("TABLE_NAME");
         this.objectMapper = new ObjectMapper();
     }
 

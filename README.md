@@ -42,11 +42,38 @@ awslocal secretsmanager create-secret --name "LogisticsApiKey" --secret-string '
 ### 3. Build & Run Locally
 ```bash
 mvn package
-sam local start-api --region us-east-1
+./run_all.sh
+```
+
+## 🧪 Testing
+The project includes a comprehensive testing suite:
+
+### Unit Tests
+Focused on business logic in isolation.
+```bash
+mvn test -Dtest="*HandlerTest"
+```
+
+### Integration Tests
+Verify end-to-end flows using LocalStack.
+```bash
+# Ensure LocalStack is running first
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1 \
+AWS_ENDPOINT_URL=http://localhost:4566 TABLE_NAME=Products \
+mvn test -Dtest="*IntegrationTest"
+```
+
+### Automated Setup & Test
+Runs environment cleanup, build, infrastructure init, and all tests:
+```bash
+chmod +x run_all.sh
+./run_all.sh
 ```
 
 ## 🧠 Technical Lessons Learned (Gotchas)
-- **Networking:** On Linux, when using SAM inside a container, use the host IP (e.g., `192.168.x.x`) for `AWS_ENDPOINT_URL` to reach LocalStack, as `host.docker.internal` might not resolve.
+- **Networking:** On Linux, when using SAM inside a container, use the host IP (e.g., `172.17.0.1` from `docker0`) for `AWS_ENDPOINT_URL` to reach LocalStack.
+- **S3 Path Style:** LocalStack requires `pathStyleAccessEnabled(true)` for both S3 Client and S3 Presigner to correctly resolve buckets without DNS manipulation.
+- **Dependency Injection:** Lambda handlers are refactored with package-private constructors to allow mocking of AWS SDK clients during unit tests.
 - **TransactionWriteItems:** Used for orders to ensure that stock decrement and order creation happen atomically.
-- **SSM in Lambda:** Fetching parameters during Lambda initialization (constructor) significantly reduces runtime overhead compared to fetching on every request.
+- **Shaded JARs:** SAM local can sometimes fail if a directory exists with the same name as the JAR file in `target/`. Always ensure `mvn clean` is run.
 

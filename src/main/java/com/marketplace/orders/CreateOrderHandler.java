@@ -29,7 +29,20 @@ public class CreateOrderHandler implements RequestHandler<APIGatewayProxyRequest
     private final String tableName;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Initializes the DynamoDB client and other dependencies.
+     */
     public CreateOrderHandler() {
+        this(null, null);
+    }
+
+    /**
+     * Constructor for dependency injection, used primarily for testing.
+     *
+     * @param dynamoDbClient The DynamoDB client.
+     * @param tableName      The DynamoDB table name.
+     */
+    CreateOrderHandler(DynamoDbClient dynamoDbClient, String tableName) {
         ClientOverrideConfiguration clientConfig = ClientUtils.getXRayConfig().toBuilder()
                 .retryPolicy(RetryPolicy.builder()
                         .numRetries(3)
@@ -37,11 +50,12 @@ public class CreateOrderHandler implements RequestHandler<APIGatewayProxyRequest
                         .build())
                 .build();
         
-        this.dynamoDbClient = ClientUtils.configureEndpoint(DynamoDbClient.builder())
+        this.dynamoDbClient = dynamoDbClient != null ? dynamoDbClient : 
+                ClientUtils.configureEndpoint(DynamoDbClient.builder())
                 .overrideConfiguration(clientConfig)
                 .build();
         
-        this.tableName = System.getenv("TABLE_NAME");
+        this.tableName = tableName != null ? tableName : System.getenv("TABLE_NAME");
         this.objectMapper = new ObjectMapper();
     }
 
