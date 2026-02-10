@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.DecryptResponse;
+import com.marketplace.utils.ClientUtils;
 
 import java.util.Base64;
 import java.util.HashMap;
@@ -35,15 +36,13 @@ public class GetProductByIdHandler implements RequestHandler<APIGatewayProxyRequ
      * Initializes the DynamoDB client and other dependencies.
      */
     public GetProductByIdHandler() {
-        ClientOverrideConfiguration xRayConfig = ClientOverrideConfiguration.builder()
-                .addExecutionInterceptor(new TracingInterceptor())
-                .build();
+        ClientOverrideConfiguration xRayConfig = ClientUtils.getXRayConfig();
 
-        this.dynamoDbClient = DynamoDbClient.builder()
+        this.dynamoDbClient = ClientUtils.configureEndpoint(DynamoDbClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.kmsClient = KmsClient.builder()
+        this.kmsClient = ClientUtils.configureEndpoint(KmsClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
@@ -88,6 +87,9 @@ public class GetProductByIdHandler implements RequestHandler<APIGatewayProxyRequ
             product.setCategory(item.get("category").s());
             if (item.containsKey("version")) {
                 product.setVersion(Integer.parseInt(item.get("version").n()));
+            }
+            if (item.containsKey("stockQuantity")) {
+                product.setStockQuantity(Integer.parseInt(item.get("stockQuantity").n()));
             }
 
             // KMS Decryption for sensitive supplier email

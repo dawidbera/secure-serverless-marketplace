@@ -1,0 +1,24 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto17
+  
+  pre_build:
+    commands:
+      - echo "Checking environment..."
+      - mvn -version
+      - sam --version
+
+  build:
+    commands:
+      - echo "Building and packaging the application..."
+      - cd secure-serverless-marketplace
+      - mvn clean package -DskipTests
+      - sam package --template-file template.yaml --output-template-file packaged.yaml --s3-bucket $ARTIFACT_BUCKET
+
+artifacts:
+  files:
+    - secure-serverless-marketplace/packaged.yaml
+  discard-paths: yes

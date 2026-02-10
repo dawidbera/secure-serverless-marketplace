@@ -18,6 +18,10 @@ import software.amazon.awssdk.services.kms.model.EncryptResponse;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
 import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
 import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
+import com.marketplace.utils.ClientUtils;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
 import java.util.Base64;
 import java.util.HashMap;
@@ -36,31 +40,63 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
     private final String kmsKeyId;
     private final String logisticsSecretArn;
     private final ObjectMapper objectMapper;
+    private static JedisPool jedisPool;
 
     /**
      * Initializes the DynamoDB client and other dependencies.
      */
     public CreateProductHandler() {
-        ClientOverrideConfiguration xRayConfig = ClientOverrideConfiguration.builder()
-                .addExecutionInterceptor(new TracingInterceptor())
-                .build();
+        this(null, null, null, null, null, null);
+    }
+
+    /**
+     * Constructor for dependency injection, used primarily for testing.
+     *
+     * @param dynamoDbClient       The DynamoDB client.
+     * @param kmsClient            The KMS client.
+     * @param secretsManagerClient The Secrets Manager client.
+     * @param tableName           The DynamoDB table name.
+     * @param kmsKeyId            The KMS Key ID.
+     * @param logisticsSecretArn  The logistics secret ARN.
+     */
+    CreateProductHandler(DynamoDbClient dynamoDbClient, KmsClient kmsClient, 
+                         SecretsManagerClient secretsManagerClient, String tableName, 
+                         String kmsKeyId, String logisticsSecretArn) {
+        ClientOverrideConfiguration xRayConfig = ClientUtils.getXRayConfig();
         
-        this.dynamoDbClient = DynamoDbClient.builder()
+        this.dynamoDbClient = dynamoDbClient != null ? dynamoDbClient : 
+                ClientUtils.configureEndpoint(DynamoDbClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
         
-        this.kmsClient = KmsClient.builder()
+        this.kmsClient = kmsClient != null ? kmsClient : 
+                ClientUtils.configureEndpoint(KmsClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.secretsManagerClient = SecretsManagerClient.builder()
+        this.secretsManagerClient = secretsManagerClient != null ? secretsManagerClient : 
+                ClientUtils.configureEndpoint(SecretsManagerClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.tableName = System.getenv("TABLE_NAME");
-        this.kmsKeyId = System.getenv("KMS_KEY_ID");
-        this.logisticsSecretArn = System.getenv("LOGISTICS_SECRET_ARN");
+        this.tableName = tableName != null ? tableName : System.getenv("TABLE_NAME");
+        this.kmsKeyId = kmsKeyId != null ? kmsKeyId : System.getenv("KMS_KEY_ID");
+        this.logisticsSecretArn = logisticsSecretArn != null ? logisticsSecretArn : System.getenv("LOGISTICS_SECRET_ARN");
         this.objectMapper = new ObjectMapper();
+        initializeRedisPool();
+    }
+
+    /**
+     * Initializes the Redis connection pool using environment variables.
+     */
+    private void initializeRedisPool() {
+        if (jedisPool == null) {
+            String redisHost = System.getenv("REDIS_HOST");
+            String redisPort = System.getenv("REDIS_PORT");
+            if (redisHost != null && redisPort != null) {
+                jedisPool = new JedisPool(new JedisPoolConfig(), redisHost, Integer.parseInt(redisPort));
+            }
+        }
     }
 
     /**
@@ -95,6 +131,7 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
             item.put("price", AttributeValue.builder().n(String.valueOf(product.getPrice())).build());
             item.put("category", AttributeValue.builder().s(product.getCategory()).build());
             item.put("version", AttributeValue.builder().n(String.valueOf(product.getVersion())).build());
+            item.put("stockQuantity", AttributeValue.builder().n(String.valueOf(product.getStockQuantity())).build());
 
             // KMS Encryption for sensitive supplier email
             if (product.getSupplierEmail() != null) {
@@ -115,6 +152,16 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
                     .build();
 
             dynamoDbClient.putItem(putItemRequest);
+
+            // Invalidate Redis Cache
+            if (jedisPool != null) {
+                try (Jedis jedis = jedisPool.getResource()) {
+                    jedis.flushAll(); // Simple eviction for the prototype
+                    context.getLogger().log("Redis cache invalidated.");
+                } catch (Exception e) {
+                    context.getLogger().log("Redis eviction error: " + e.getMessage());
+                }
+            }
 
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", "application/json");

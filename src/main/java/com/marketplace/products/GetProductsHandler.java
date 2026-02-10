@@ -11,11 +11,18 @@ import com.amazonaws.xray.interceptors.TracingInterceptor;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.ScanRequest;
 import software.amazon.awssdk.services.dynamodb.model.ScanResponse;
 import software.amazon.awssdk.services.kms.KmsClient;
 import software.amazon.awssdk.services.kms.model.DecryptRequest;
 import software.amazon.awssdk.services.kms.model.DecryptResponse;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import com.marketplace.utils.ClientUtils;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -30,27 +37,73 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
 
     private final DynamoDbClient dynamoDbClient;
     private final KmsClient kmsClient;
+    private final SsmClient ssmClient;
     private final String tableName;
     private final ObjectMapper objectMapper;
+    private static JedisPool jedisPool;
 
     /**
      * Initializes the DynamoDB client and other dependencies.
      */
     public GetProductsHandler() {
-        ClientOverrideConfiguration xRayConfig = ClientOverrideConfiguration.builder()
-                .addExecutionInterceptor(new TracingInterceptor())
-                .build();
+        this(null, null, null, null);
+    }
 
-        this.dynamoDbClient = DynamoDbClient.builder()
+    /**
+     * Constructor for dependency injection, used primarily for testing.
+     *
+     * @param dynamoDbClient The DynamoDB client.
+     * @param kmsClient      The KMS client.
+     * @param ssmClient      The SSM client.
+     * @param tableName      The DynamoDB table name.
+     */
+    GetProductsHandler(DynamoDbClient dynamoDbClient, KmsClient kmsClient, 
+                       SsmClient ssmClient, String tableName) {
+        ClientOverrideConfiguration xRayConfig = ClientUtils.getXRayConfig();
+
+        this.dynamoDbClient = dynamoDbClient != null ? dynamoDbClient :
+                ClientUtils.configureEndpoint(DynamoDbClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.kmsClient = KmsClient.builder()
+        this.kmsClient = kmsClient != null ? kmsClient :
+                ClientUtils.configureEndpoint(KmsClient.builder())
                 .overrideConfiguration(xRayConfig)
                 .build();
 
-        this.tableName = System.getenv("TABLE_NAME");
+        this.ssmClient = ssmClient != null ? ssmClient :
+                ClientUtils.configureEndpoint(SsmClient.builder())
+                .overrideConfiguration(xRayConfig)
+                .build();
+
+        if (tableName != null) {
+            this.tableName = tableName;
+        } else {
+            String ssmParamName = System.getenv("SSM_PARAMETER_NAME");
+            if (ssmParamName != null) {
+                this.tableName = ssmClient.getParameter(GetParameterRequest.builder()
+                        .name(ssmParamName)
+                        .build()).parameter().value();
+            } else {
+                this.tableName = System.getenv("TABLE_NAME");
+            }
+        }
+        
         this.objectMapper = new ObjectMapper();
+        initializeRedisPool();
+    }
+
+    /**
+     * Initializes the Redis connection pool using environment variables.
+     */
+    private void initializeRedisPool() {
+        if (jedisPool == null) {
+            String redisHost = System.getenv("REDIS_HOST");
+            String redisPort = System.getenv("REDIS_PORT");
+            if (redisHost != null && redisPort != null) {
+                jedisPool = new JedisPool(new JedisPoolConfig(), redisHost, Integer.parseInt(redisPort));
+            }
+        }
     }
 
     /**
@@ -63,19 +116,54 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         try {
-            ScanRequest scanRequest = ScanRequest.builder()
-                    .tableName(tableName)
-                    .filterExpression("begins_with(PK, :prodPrefix) AND SK = :metadata")
-                    .expressionAttributeValues(Map.of(
-                            ":prodPrefix", AttributeValue.builder().s("PROD#").build(),
-                            ":metadata", AttributeValue.builder().s("METADATA").build()
-                    ))
-                    .build();
+            Map<String, String> queryParams = input.getQueryStringParameters();
+            String category = (queryParams != null) ? queryParams.get("category") : null;
+            
+            String cacheKey = (category != null) ? "products:cat:" + category : "products:all";
 
-            ScanResponse scanResponse = dynamoDbClient.scan(scanRequest);
+            // 1. Try to fetch from Redis Cache
+            if (jedisPool != null) {
+                try (Jedis jedis = jedisPool.getResource()) {
+                    String cachedProducts = jedis.get(cacheKey);
+                    if (cachedProducts != null) {
+                        context.getLogger().log("Cache hit for key: " + cacheKey);
+                        return createResponse(200, cachedProducts);
+                    }
+                } catch (Exception e) {
+                    context.getLogger().log("Redis error: " + e.getMessage());
+                }
+            }
+
+            // 2. Fallback to DynamoDB
+            List<Map<String, AttributeValue>> items;
+
+            if (category != null && !category.isEmpty()) {
+                // Use GSI1 for efficient category filtering
+                QueryRequest queryRequest = QueryRequest.builder()
+                        .tableName(tableName)
+                        .indexName("GSI1")
+                        .keyConditionExpression("category = :cat")
+                        .expressionAttributeValues(Map.of(
+                                ":cat", AttributeValue.builder().s(category).build()
+                        ))
+                        .build();
+                items = dynamoDbClient.query(queryRequest).items();
+            } else {
+                // Fallback to scan if no category is provided (standard behavior)
+                ScanRequest scanRequest = ScanRequest.builder()
+                        .tableName(tableName)
+                        .filterExpression("begins_with(PK, :prodPrefix) AND SK = :metadata")
+                        .expressionAttributeValues(Map.of(
+                                ":prodPrefix", AttributeValue.builder().s("PROD#").build(),
+                                ":metadata", AttributeValue.builder().s("METADATA").build()
+                        ))
+                        .build();
+                items = dynamoDbClient.scan(scanRequest).items();
+            }
+
             List<Product> products = new ArrayList<>();
 
-            for (Map<String, AttributeValue> item : scanResponse.items()) {
+            for (Map<String, AttributeValue> item : items) {
                 Product product = new Product();
                 product.setId(item.get("id").s());
                 product.setName(item.get("name").s());
@@ -83,6 +171,9 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
                 product.setCategory(item.get("category").s());
                 if (item.containsKey("version")) {
                     product.setVersion(Integer.parseInt(item.get("version").n()));
+                }
+                if (item.containsKey("stockQuantity")) {
+                    product.setStockQuantity(Integer.parseInt(item.get("stockQuantity").n()));
                 }
 
                 // KMS Decryption for sensitive supplier email
@@ -99,13 +190,19 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
                 products.add(product);
             }
 
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Content-Type", "application/json");
+            String productsJson = objectMapper.writeValueAsString(products);
 
-            return new APIGatewayProxyResponseEvent()
-                    .withStatusCode(200)
-                    .withHeaders(headers)
-                    .withBody(objectMapper.writeValueAsString(products));
+            // 3. Save to Redis Cache (with 60s TTL)
+            if (jedisPool != null) {
+                try (Jedis jedis = jedisPool.getResource()) {
+                    jedis.setex(cacheKey, 60, productsJson);
+                    context.getLogger().log("Cache updated for key: " + cacheKey);
+                } catch (Exception e) {
+                    context.getLogger().log("Redis save error: " + e.getMessage());
+                }
+            }
+
+            return createResponse(200, productsJson);
 
         } catch (Exception e) {
             context.getLogger().log("Error fetching products: " + e.getMessage());
@@ -113,5 +210,14 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
                     .withStatusCode(500)
                     .withBody("{\"error\": \"Could not fetch products\"}");
         }
+    }
+
+    private APIGatewayProxyResponseEvent createResponse(int statusCode, String body) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        return new APIGatewayProxyResponseEvent()
+                .withStatusCode(statusCode)
+                .withHeaders(headers)
+                .withBody(body);
     }
 }

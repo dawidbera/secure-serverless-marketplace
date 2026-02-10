@@ -13,6 +13,12 @@ Globals:
     MemorySize: 512
     Runtime: java17
     Tracing: Active # Enable X-Ray tracing for Lambdas
+    Environment:
+      Variables:
+        AWS_ENDPOINT_URL: http://172.17.0.1:4566
+        REDIS_HOST: 172.17.0.1
+        REDIS_PORT: 6379
+        TABLE_NAME: Products
   Api:
     TracingEnabled: true # Enable X-Ray tracing for API Gateway
 
@@ -23,6 +29,13 @@ Resources:
     Properties:
       StageName: Prod
       TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: "/~1products" # ~1 is the escape for /
+          HttpMethod: "GET"
+          CachingEnabled: true
+          CacheTtlInSeconds: 60
+          ThrottlingRateLimit: 10
+          ThrottlingBurstLimit: 5
       Auth:
         DefaultAuthorizer: MyLambdaAuthorizer
         Authorizers:
@@ -41,35 +54,105 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: price
+          AttributeType: N
+        - AttributeName: GSI_PK
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
       KeySchema:
         - AttributeName: PK
           KeyType: HASH # Partition Key (e.g., PROD#<id>)
         - AttributeName: SK
           KeyType: RANGE # Sort Key (e.g., METADATA)
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: price
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI_PK
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
 
   # Lambda function for API Authorization
   ApiAuthorizerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.auth.LambdaAuthorizerHandler::handleRequest
+
+  # Lambda function to place an order
+  CreateOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
+      Handler: com.marketplace.orders.CreateOrderHandler::handleRequest
+      Environment:
+        Variables:
+          TABLE_NAME: Products
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProductsTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref ProductsTable
+      Events:
+        CreateOrder:
+          Type: Api
+          Properties:
+            Path: /orders
+            Method: post
+            RestApiId: !Ref MarketplaceApi
+
+  # Lambda function to retrieve authenticated user's orders
+  GetMyOrdersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
+      Handler: com.marketplace.orders.GetMyOrdersHandler::handleRequest
+      Environment:
+        Variables:
+          TABLE_NAME: Products
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProductsTable
+      Events:
+        GetMyOrders:
+          Type: Api
+          Properties:
+            Path: /orders/my-orders
+            Method: get
+            RestApiId: !Ref MarketplaceApi
 
   # Lambda function to retrieve all products
   GetAllProductsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.products.GetProductsHandler::handleRequest
       Environment:
         Variables:
-          TABLE_NAME: !Ref ProductsTable
+          TABLE_NAME: Products # Fallback
+          SSM_PARAMETER_NAME: /marketplace/table_name
           KMS_KEY_ID: !Ref EncryptionKey
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref ProductsTable
         - KMSDecryptPolicy:
             KeyId: !Ref EncryptionKey
+        - SSMParameterReadPolicy:
+            ParameterName: marketplace/table_name
       Events:
         GetProducts:
           Type: Api
@@ -84,11 +167,11 @@ Resources:
   CreateProductFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.products.CreateProductHandler::handleRequest
       Environment:
         Variables:
-          TABLE_NAME: !Ref ProductsTable
+          TABLE_NAME: Products
           KMS_KEY_ID: !Ref EncryptionKey
           LOGISTICS_SECRET_ARN: !Ref LogisticsApiKey
       Policies:
@@ -96,7 +179,7 @@ Resources:
             TableName: !Ref ProductsTable
         - KMSEncryptPolicy:
             KeyId: !Ref EncryptionKey
-        - SecretsManagerReadWritePolicy:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref LogisticsApiKey
       Events:
         CreateProduct:
@@ -119,11 +202,11 @@ Resources:
   GetProductByIdFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.products.GetProductByIdHandler::handleRequest
       Environment:
         Variables:
-          TABLE_NAME: !Ref ProductsTable
+          TABLE_NAME: Products
           KMS_KEY_ID: !Ref EncryptionKey
       Policies:
         - DynamoDBReadPolicy:
@@ -140,6 +223,37 @@ Resources:
             Auth:
               Authorizer: NONE # Get product by ID is public
 
+  # S3 Bucket for digital assets
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "marketplace-assets-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Lambda function to generate pre-signed URLs
+  GetProductAssetUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
+      Handler: com.marketplace.products.S3PreSignedUrlHandler::handleRequest
+      Environment:
+        Variables:
+          ASSETS_BUCKET_NAME: marketplace-assets-000000000000
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref AssetsBucket
+      Events:
+        GetAssetUrl:
+          Type: Api
+          Properties:
+            Path: /products/{id}/asset
+            Method: get
+            RestApiId: !Ref MarketplaceApi
+
   # KMS Key for application-level encryption of PII
   EncryptionKey:
     Type: AWS::KMS::Key
@@ -155,6 +269,14 @@ Resources:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: '*'
+
+  # SSM Parameter for shared configuration (Table Name)
+  TableParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /marketplace/table_name
+      Type: String
+      Value: !Ref ProductsTable
 
 # Output values exported from the stack
 Outputs:

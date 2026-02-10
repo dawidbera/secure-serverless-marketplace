@@ -11,6 +11,7 @@ public class Product {
     private double price;
     private String category;
     private Integer version;
+    private int stockQuantity;
     private String supplierEmail;
 
     /**
@@ -26,14 +27,16 @@ public class Product {
      * @param price         The price of the product.
      * @param category      The category the product belongs to.
      * @param version       The version of the product for optimistic locking.
+     * @param stockQuantity The current inventory level.
      * @param supplierEmail The sensitive email of the supplier.
      */
-    public Product(String id, String name, double price, String category, Integer version, String supplierEmail) {
+    public Product(String id, String name, double price, String category, Integer version, int stockQuantity, String supplierEmail) {
         this.id = id;
         this.name = name;
         this.price = price;
         this.category = category;
         this.version = version;
+        this.stockQuantity = stockQuantity;
         this.supplierEmail = supplierEmail;
     }
 
@@ -111,6 +114,21 @@ public class Product {
      * @param version The product version.
      */
     public void setVersion(Integer version) { this.version = version; }
+
+    /**
+     * Returns the stock quantity.
+     *
+     * @return The stock quantity.
+     */
+    @JsonProperty("stockQuantity")
+    public int getStockQuantity() { return stockQuantity; }
+
+    /**
+     * Sets the stock quantity.
+     *
+     * @param stockQuantity The stock quantity.
+     */
+    public void setStockQuantity(int stockQuantity) { this.stockQuantity = stockQuantity; }
 
     /**
      * Returns the supplier email.
