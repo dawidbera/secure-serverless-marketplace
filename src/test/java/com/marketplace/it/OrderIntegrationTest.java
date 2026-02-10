@@ -37,6 +37,9 @@ public class OrderIntegrationTest {
     @Mock
     private LambdaLogger logger;
 
+    /**
+     * Sets up the global environment before all integration tests.
+     */
     @BeforeAll
     public static void setup() {
         System.setProperty("aws.region", "us-east-1");
@@ -47,6 +50,9 @@ public class OrderIntegrationTest {
         getOrdersHandler = new GetMyOrdersHandler();
     }
 
+    /**
+     * Initializes mocks before each test execution.
+     */
     @BeforeEach
     public void init() {
         MockitoAnnotations.openMocks(this);

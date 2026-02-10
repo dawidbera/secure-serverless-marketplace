@@ -44,11 +44,54 @@ public class CreateProductHandlerTest {
 
     private CreateProductHandler handler;
 
+    /**
+     * Sets up the test environment before each test.
+     */
     @BeforeEach
     public void setUp() {
         lenient().when(context.getLogger()).thenReturn(logger);
         handler = new CreateProductHandler(dynamoDbClient, kmsClient, secretsManagerClient, 
                 "TestTable", "test-key-id", "test-secret-arn");
+    }
+
+    /**
+     * Tests that a 400 error is returned when the product name is missing.
+     */
+    @Test
+    public void shouldReturn400WhenNameIsMissing() {
+        // Given
+        APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
+                .withBody("{\"price\": 100.0, \"category\": \"Electronics\"}");
+
+        when(secretsManagerClient.getSecretValue(any(GetSecretValueRequest.class)))
+                .thenReturn(GetSecretValueResponse.builder().name("LogisticsApiKey").build());
+
+        // When
+        APIGatewayProxyResponseEvent response = handler.handleRequest(request, context);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(400);
+        assertThat(response.getBody()).contains("Product name is required");
+    }
+
+    /**
+     * Tests that a 400 error is returned when the price is less than or equal to zero.
+     */
+    @Test
+    public void shouldReturn400WhenPriceIsInvalid() {
+        // Given
+        APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent()
+                .withBody("{\"name\": \"Test\", \"price\": -1.0, \"category\": \"Electronics\"}");
+
+        when(secretsManagerClient.getSecretValue(any(GetSecretValueRequest.class)))
+                .thenReturn(GetSecretValueResponse.builder().name("LogisticsApiKey").build());
+
+        // When
+        APIGatewayProxyResponseEvent response = handler.handleRequest(request, context);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(400);
+        assertThat(response.getBody()).contains("Product price must be greater than zero");
     }
 
     /**

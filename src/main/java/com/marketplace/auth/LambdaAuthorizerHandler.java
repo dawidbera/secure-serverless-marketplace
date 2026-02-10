@@ -14,6 +14,14 @@ import java.util.Map;
  */
 public class LambdaAuthorizerHandler implements RequestHandler<APIGatewayCustomAuthorizerEvent, IamPolicyResponse> {
 
+    /**
+     * Handles the authorization request from API Gateway.
+     * Validates the Bearer token and returns an IAM policy.
+     *
+     * @param event   The custom authorizer event from API Gateway.
+     * @param context The Lambda execution context.
+     * @return An IAM policy response indicating if the request is allowed or denied.
+     */
     @Override
     public IamPolicyResponse handleRequest(APIGatewayCustomAuthorizerEvent event, Context context) {
         String token = event.getAuthorizationToken();

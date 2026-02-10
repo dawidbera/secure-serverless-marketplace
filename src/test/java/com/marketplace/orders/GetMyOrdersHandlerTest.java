@@ -40,6 +40,9 @@ public class GetMyOrdersHandlerTest {
 
     private GetMyOrdersHandler handler;
 
+    /**
+     * Sets up the test environment before each test.
+     */
     @BeforeEach
     public void setUp() {
         lenient().when(context.getLogger()).thenReturn(logger);

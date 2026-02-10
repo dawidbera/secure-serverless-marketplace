@@ -59,7 +59,7 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
      * @param kmsKeyId            The KMS Key ID.
      * @param logisticsSecretArn  The logistics secret ARN.
      */
-    CreateProductHandler(DynamoDbClient dynamoDbClient, KmsClient kmsClient, 
+    public CreateProductHandler(DynamoDbClient dynamoDbClient, KmsClient kmsClient, 
                          SecretsManagerClient secretsManagerClient, String tableName, 
                          String kmsKeyId, String logisticsSecretArn) {
         ClientOverrideConfiguration xRayConfig = ClientUtils.getXRayConfig();
@@ -84,6 +84,28 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
         this.logisticsSecretArn = logisticsSecretArn != null ? logisticsSecretArn : System.getenv("LOGISTICS_SECRET_ARN");
         this.objectMapper = new ObjectMapper();
         initializeRedisPool();
+    }
+
+    /**
+     * Validates the product details.
+     *
+     * @param product The product to validate.
+     * @return An error message if validation fails, otherwise null.
+     */
+    private String validateProduct(Product product) {
+        if (product.getName() == null || product.getName().trim().isEmpty()) {
+            return "Product name is required";
+        }
+        if (product.getPrice() <= 0) {
+            return "Product price must be greater than zero";
+        }
+        if (product.getCategory() == null || product.getCategory().trim().isEmpty()) {
+            return "Product category is required";
+        }
+        if (product.getStockQuantity() < 0) {
+            return "Stock quantity cannot be negative";
+        }
+        return null;
     }
 
     /**
@@ -117,6 +139,15 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
             context.getLogger().log("Successfully retrieved logistics secret: " + secretValueResponse.name());
 
             Product product = objectMapper.readValue(input.getBody(), Product.class);
+            
+            // Validate input
+            String validationError = validateProduct(product);
+            if (validationError != null) {
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(400)
+                        .withBody("{\"error\": \"" + validationError + "\"}");
+            }
+
             if (product.getId() == null) {
                 product.setId(UUID.randomUUID().toString());
             }
@@ -173,9 +204,10 @@ public class CreateProductHandler implements RequestHandler<APIGatewayProxyReque
 
         } catch (Exception e) {
             context.getLogger().log("Error creating product: " + e.getMessage());
+            e.printStackTrace(); // Crucial for seeing the error in Maven logs
             return new APIGatewayProxyResponseEvent()
                     .withStatusCode(500)
-                    .withBody("{\"error\": \"Could not create product\"}");
+                    .withBody("{\"error\": \"Could not create product\", \"details\": \"" + e.toString() + "\"}");
         }
     }
 }

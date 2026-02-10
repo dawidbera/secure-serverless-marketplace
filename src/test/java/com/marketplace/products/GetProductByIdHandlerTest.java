@@ -43,6 +43,9 @@ public class GetProductByIdHandlerTest {
 
     private GetProductByIdHandler handler;
 
+    /**
+     * Sets up the test environment before each test.
+     */
     @BeforeEach
     public void setUp() {
         lenient().when(context.getLogger()).thenReturn(logger);

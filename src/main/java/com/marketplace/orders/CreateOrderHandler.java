@@ -71,6 +71,19 @@ public class CreateOrderHandler implements RequestHandler<APIGatewayProxyRequest
             }
 
             Order orderRequest = objectMapper.readValue(input.getBody(), Order.class);
+            
+            // Validate input
+            if (orderRequest.getProductId() == null || orderRequest.getProductId().trim().isEmpty()) {
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(400)
+                        .withBody("{\"error\": \"Product ID is required\"}");
+            }
+            if (orderRequest.getQuantity() <= 0) {
+                return new APIGatewayProxyResponseEvent()
+                        .withStatusCode(400)
+                        .withBody("{\"error\": \"Quantity must be greater than zero\"}");
+            }
+
             orderRequest.setUserId(userId);
             
             // 1. Fetch current product state

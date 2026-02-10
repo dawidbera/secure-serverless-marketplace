@@ -56,6 +56,12 @@ mvn test -Dtest="*HandlerTest"
 
 ### Integration Tests
 Verify end-to-end flows using LocalStack.
+- **Product Flow**: Basic CRUD operations.
+- **Order Flow**: Transactions and stock management.
+- **Concurrency**: Optimistic locking verification (race conditions).
+- **Security**: Verifying PII encryption at rest in DynamoDB.
+- **S3**: Pre-signed URL validity and accessibility.
+
 ```bash
 # Ensure LocalStack is running first
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1 \
@@ -63,8 +69,14 @@ AWS_ENDPOINT_URL=http://localhost:4566 TABLE_NAME=Products \
 mvn test -Dtest="*IntegrationTest"
 ```
 
+### Load Tests (k6)
+Simulate high traffic and verify RPS limits.
+```bash
+docker run --rm --add-host=host.docker.internal:host-gateway -v $(pwd)/load-tests:/io -i grafana/k6 run /io/performance-test.js
+```
+
 ### Automated Setup & Test
-Runs environment cleanup, build, infrastructure init, and all tests:
+Runs environment cleanup, build, infrastructure init, unit tests, integration tests, and load tests:
 ```bash
 chmod +x run_all.sh
 ./run_all.sh

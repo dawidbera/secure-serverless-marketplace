@@ -30,6 +30,9 @@ public class ProductIntegrationTest {
     @Mock
     private LambdaLogger logger;
 
+    /**
+     * Sets up the global environment before all integration tests.
+     */
     @BeforeAll
     public static void setup() {
         // Set region for AWS SDK
@@ -42,6 +45,9 @@ public class ProductIntegrationTest {
         getHandler = new GetProductsHandler();
     }
 
+    /**
+     * Initializes mocks before each test execution.
+     */
     @BeforeEach
     public void init() {
         MockitoAnnotations.openMocks(this);

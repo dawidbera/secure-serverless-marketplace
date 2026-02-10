@@ -41,6 +41,9 @@ public class S3PreSignedUrlHandlerTest {
 
     private S3PreSignedUrlHandler handler;
 
+    /**
+     * Sets up the test environment before each test.
+     */
     @BeforeEach
     public void setUp() {
         lenient().when(context.getLogger()).thenReturn(logger);
