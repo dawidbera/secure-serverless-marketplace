@@ -13,6 +13,8 @@ Globals:
     MemorySize: 512
     Runtime: java17
     Tracing: Active # Enable X-Ray tracing for Lambdas
+    Layers:
+      - !Ref MarketplaceUtilsLayer
     Environment:
       Variables:
         AWS_ENDPOINT_URL: http://172.17.0.1:4566
@@ -23,6 +25,16 @@ Globals:
     TracingEnabled: true # Enable X-Ray tracing for API Gateway
 
 Resources:
+  # Lambda Layer for shared utilities
+  MarketplaceUtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: MarketplaceUtils
+      Description: Shared utilities for Marketplace Lambdas
+      ContentUri: layers/marketplace-utils/target/marketplace-utils-1.0-SNAPSHOT.zip
+      CompatibleRuntimes:
+        - java17
+
   # API Gateway with Lambda Authorizer
   MarketplaceApi:
     Type: AWS::Serverless::Api
@@ -212,6 +224,7 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.deploy.BeforeAllowTrafficHandler::handleRequest
+      Layers: [] # Explicitly empty to override Global Layers
       DeploymentPreference:
         Enabled: false # Hooks themselves don't use deployment preferences
       Policies:
@@ -227,6 +240,7 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.deploy.AfterAllowTrafficHandler::handleRequest
+      Layers: [] # Explicitly empty to override Global Layers
       DeploymentPreference:
         Enabled: false
       Policies:

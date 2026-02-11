@@ -9,8 +9,10 @@ graph TD
     Client[Client] -->|Request| APIGateway[API Gateway]
     
     subgraph "Authentication & Authorization"
-        APIGateway -->|Validate Token| Authorizer[Lambda Authorizer]
+        APIGateway -->|Validate Token| Authorizer[Cognito User Pool]
         Authorizer -.->|Allow/Deny| APIGateway
+        Client -->|Exchange Creds| IdentityPool[Cognito Identity Pool]
+        IdentityPool -->|Assume Role| STS[AWS STS]
     end
 
     subgraph "Compute Layer (Lambdas)"
@@ -31,12 +33,13 @@ graph TD
         CreateProduct -->|Put Item| DynamoDB
         
         S3PreSigned -->|Generate URL| S3[S3 Assets Bucket]
+        Client -->|Direct Access (STS)| S3
         
         GetProducts -->|Config| SSM[SSM Parameter Store]
     end
 
     classDef aws fill:#f9f,stroke:#333,stroke-width:2px;
-    class APIGateway,Authorizer,GetProducts,CreateOrder,CreateProduct,S3PreSigned,DynamoDB,S3,KMS,SecretsManager,SSM aws;
+    class APIGateway,Authorizer,IdentityPool,STS,GetProducts,CreateOrder,CreateProduct,S3PreSigned,DynamoDB,S3,KMS,SecretsManager,SSM aws;
 ```
 
 ### 🔄 Key Process Flows
@@ -46,21 +49,23 @@ graph TD
 sequenceDiagram
     participant C as Client
     participant AGW as API Gateway
-    participant AUTH as Lambda Authorizer
+    participant COG as Cognito User Pool
     participant COH as CreateOrderHandler
     participant DDB as DynamoDB
 
-    C->>AGW: POST /orders (Bearer Token)
-    AGW->>AUTH: Validate Token
-    AUTH-->>AGW: Allow + Context (user_id)
-    AGW->>COH: Invoke with Body + Context
+    C->>COG: 1. Authenticate & Get JWT
+    COG-->>C: ID/Access Token
     
-    COH->>DDB: GetItem (Product SKU)
+    C->>AGW: 2. POST /orders (Bearer Token)
+    Note over AGW: Lambda Authorizer validates JWT
+    AGW->>COH: 3. Invoke with Body + Context (user_id)
+    
+    COH->>DDB: 4. GetItem (Product SKU)
     DDB-->>COH: Product Info (Stock, Version)
     
-    Note over COH: Check stockAvailability
+    Note over COH: Check availability
     
-    COH->>DDB: TransactWriteItems
+    COH->>DDB: 5. TransactWriteItems
     Note right of DDB: Condition: version = :v AND stock >= :q
     
     alt Success
@@ -72,6 +77,28 @@ sequenceDiagram
         COH-->>AGW: 409 Conflict
         AGW-->>C: Error: Concurrent Update
     end
+```
+
+#### Direct S3 Access (Cognito Identity Pool + STS)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant COG_IDP as Cognito User Pool
+    participant COG_ID as Cognito Identity Pool
+    participant STS as AWS STS
+    participant S3 as S3 Assets Bucket
+
+    C->>COG_IDP: 1. Login
+    COG_IDP-->>C: ID Token
+    
+    C->>COG_ID: 2. Provide ID Token
+    COG_ID->>STS: 3. AssumeRoleWithWebIdentity
+    STS-->>COG_ID: Temporary AWS Credentials
+    COG_ID-->>C: AccessKey, SecretKey, SessionToken
+    
+    C->>S3: 4. GET asset.zip (Direct Access)
+    Note over S3: Validates STS credentials via IAM Role
+    S3-->>C: Digital Asset File
 ```
 
 #### Product Creation (Security & Cache)
@@ -105,12 +132,12 @@ sequenceDiagram
     AGW-->>C: Product Details
 ```
 
-- **Compute:** AWS Lambda (Java 17)
+- **Compute:** AWS Lambda (Java 17) + **Lambda Layers** (Shared Utilities)
 - **API:** Amazon API Gateway (Throttling: 10 RPS, Caching: 60s)
 - **Database:** Amazon DynamoDB (Single-table design)
     - **GSI1:** Category-based search (`PK: category`, `SK: price`)
     - **GSI2:** User order history (`PK: GSI_PK`, `SK: timestamp`)
-- **Security:** AWS KMS (PII Encryption), Secrets Manager (API Keys), IAM (Least Privilege)
+- **Security:** AWS KMS (PII Encryption), Secrets Manager (API Keys), **Cognito User Pools** (AuthN), **Cognito Identity Pools + STS** (Direct S3 Access).
 - **Concurrency:** Optimistic Locking with `version` attribute.
 - **Infrastructure:** AWS SAM + LocalStack
 
@@ -127,24 +154,23 @@ docker compose up -d
 ```
 
 ### 2. Setup Resources (LocalStack)
-Before running the API, configure the infrastructure in LocalStack:
-```bash
-# Table setup
-awslocal dynamodb create-table --table-name Products \
-  --attribute-definitions AttributeName=PK,AttributeType=S AttributeName=SK,AttributeType=S AttributeName=category,AttributeType=S AttributeName=price,AttributeType=N AttributeName=GSI_PK,AttributeType=S AttributeName=timestamp,AttributeType=N \
-  --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
-  --global-secondary-indexes "[{\"IndexName\":\"GSI1\",\"KeySchema\":[{\"AttributeName\":\"category\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"price\",\"KeyType\":\"RANGE\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}},{\"IndexName\":\"GSI2\",\"KeySchema\":[{\"AttributeName\":\"GSI_PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"timestamp\",\"KeyType\":\"RANGE\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}]" \
-  --billing-mode PAY_PER_REQUEST
+The setup script `run_all.sh` handles the initialization of all resources, including DynamoDB tables, S3 buckets, SSM parameters, Secrets Manager secrets, and **Cognito User/Identity Pools**.
 
-# Config & Secrets
-awslocal ssm put-parameter --name "/marketplace/table_name" --type "String" --value "Products"
-awslocal secretsmanager create-secret --name "LogisticsApiKey" --secret-string '{"api_key": "super-secret-key-123"}'
+```bash
+./run_all.sh
 ```
 
-### 3. Build & Run Locally
+### 3. Manual Build (Optional)
+If you need to build the project manually, ensure you build the Lambda Layer first:
+
 ```bash
-mvn package
-./run_all.sh
+# Build Shared Layer
+cd layers/marketplace-utils
+mvn clean install
+
+# Build Main Project
+cd ../..
+mvn clean package
 ```
 
 ## 🧪 Testing
@@ -189,5 +215,6 @@ chmod +x run_all.sh
 - **S3 Path Style:** LocalStack requires `pathStyleAccessEnabled(true)` for both S3 Client and S3 Presigner to correctly resolve buckets without DNS manipulation.
 - **Dependency Injection:** Lambda handlers are refactored with package-private constructors to allow mocking of AWS SDK clients during unit tests.
 - **TransactionWriteItems:** Used for orders to ensure that stock decrement and order creation happen atomically.
+- **DynamoDB DAX vs Redis:** While Redis is used here for aggregating product lists, **DynamoDB DAX** (DynamoDB Accelerator) is the recommended pattern for microsecond-latency read-intensive applications that require direct API compatibility with DynamoDB.
 - **Shaded JARs:** SAM local can sometimes fail if a directory exists with the same name as the JAR file in `target/`. Always ensure `mvn clean` is run.
 

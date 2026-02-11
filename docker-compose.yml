@@ -12,6 +12,7 @@ services:
     environment:
       - DEBUG=0
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - SERVICES=cognito-idp,cognito-identity,dynamodb,s3,ssm,secretsmanager,kms,iam,sts,lambda
     volumes:
       - "./localstack_data:/var/lib/localstack" # Persist localstack data
       - "/var/run/docker.sock:/var/run/docker.sock"

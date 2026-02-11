@@ -48,6 +48,8 @@ echo -e "${BLUE}--- 5. Starting infrastructure (Docker Compose) ---${NC}"
 docker compose up -d
 
 echo -e "${BLUE}--- 6. Building Maven project ---${NC}"
+# Build the utils layer first and install it to local maven repo
+cd layers/marketplace-utils && mvn clean install -DskipTests && cd ../..
 mvn clean package -DskipTests
 
 echo -e "${BLUE}--- 7. Initializing LocalStack resources ---${NC}"
@@ -73,21 +75,25 @@ awslocal secretsmanager create-secret --name "LogisticsApiKey" --secret-string '
 
 echo "Setting up Cognito resources..."
 # User Pool
-USER_POOL_ID=$(awslocal cognito-idp create-user-pool --pool-name MarketplaceUserPool --query 'UserPool.Id' --output text)
+USER_POOL_ID=$(awslocal cognito-idp create-user-pool --pool-name MarketplaceUserPool --query 'UserPool.Id' --output text 2>/dev/null || echo "COGNITO_NOT_SUPPORTED")
 echo "User Pool ID: $USER_POOL_ID"
 
-# User Pool Client
-CLIENT_ID=$(awslocal cognito-idp create-user-pool-client --user-pool-id $USER_POOL_ID --client-name MarketplaceWebClient --query 'UserPoolClient.ClientId' --output text)
-echo "User Pool Client ID: $CLIENT_ID"
+if [ "$USER_POOL_ID" != "COGNITO_NOT_SUPPORTED" ]; then
+    # User Pool Client
+    CLIENT_ID=$(awslocal cognito-idp create-user-pool-client --user-pool-id $USER_POOL_ID --client-name MarketplaceWebClient --query 'UserPoolClient.ClientId' --output text)
+    echo "User Pool Client ID: $CLIENT_ID"
 
-# Identity Pool
-IDENTITY_POOL_ID=$(awslocal cognito-identity create-identity-pool --identity-pool-name MarketplaceIdentityPool --no-allow-unauthenticated-identities --cognito-identity-providers ProviderName="cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID",ClientId="$CLIENT_ID" --query 'IdentityPoolId' --output text)
-echo "Identity Pool ID: $IDENTITY_POOL_ID"
+    # Identity Pool
+    IDENTITY_POOL_ID=$(awslocal cognito-identity create-identity-pool --identity-pool-name MarketplaceIdentityPool --no-allow-unauthenticated-identities --cognito-identity-providers ProviderName="cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID",ClientId="$CLIENT_ID" --query 'IdentityPoolId' --output text)
+    echo "Identity Pool ID: $IDENTITY_POOL_ID"
 
-# Export IDs for tests or other scripts if needed
-export USER_POOL_ID
-export CLIENT_ID
-export IDENTITY_POOL_ID
+    # Export IDs for tests or other scripts if needed
+    export USER_POOL_ID
+    export CLIENT_ID
+    export IDENTITY_POOL_ID
+else
+    echo -e "${RED}Warning: Cognito is not supported in this LocalStack environment. Skipping Cognito-specific setup.${NC}"
+fi
 
 # Check if bucket exists, if not create it
 if ! awslocal s3 ls s3://marketplace-assets-000000000000 >/dev/null 2>&1; then
