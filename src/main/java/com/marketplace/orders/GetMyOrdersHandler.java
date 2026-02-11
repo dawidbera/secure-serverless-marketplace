@@ -53,6 +53,13 @@ public class GetMyOrdersHandler implements RequestHandler<APIGatewayProxyRequest
         this.objectMapper = new ObjectMapper();
     }
 
+    /**
+     * Handles the GET request to retrieve orders for the authenticated user.
+     *
+     * @param input   The API Gateway proxy request event.
+     * @param context The Lambda execution context.
+     * @return The API Gateway proxy response event containing the list of orders.
+     */
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         try {

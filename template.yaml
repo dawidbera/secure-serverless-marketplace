@@ -30,12 +30,14 @@ Resources:
       StageName: Prod
       TracingEnabled: true
       MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 10
+          ThrottlingBurstLimit: 5
         - ResourcePath: "/~1products" # ~1 is the escape for /
           HttpMethod: "GET"
           CachingEnabled: true
           CacheTtlInSeconds: 60
-          ThrottlingRateLimit: 10
-          ThrottlingBurstLimit: 5
       Auth:
         DefaultAuthorizer: MyLambdaAuthorizer
         Authorizers:
@@ -99,6 +101,12 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.orders.CreateOrderHandler::handleRequest
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Hooks:
+          PreTraffic: !Ref BeforeAllowTrafficLambdaFunction
+          PostTraffic: !Ref AfterAllowTrafficLambdaFunction
       Environment:
         Variables:
           TABLE_NAME: Products
@@ -121,6 +129,7 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.orders.GetMyOrdersHandler::handleRequest
+      AutoPublishAlias: live
       Environment:
         Variables:
           TABLE_NAME: Products
@@ -141,6 +150,7 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.products.GetProductsHandler::handleRequest
+      AutoPublishAlias: live
       Environment:
         Variables:
           TABLE_NAME: Products # Fallback
@@ -169,6 +179,12 @@ Resources:
     Properties:
       CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
       Handler: com.marketplace.products.CreateProductHandler::handleRequest
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Hooks:
+          PreTraffic: !Ref BeforeAllowTrafficLambdaFunction
+          PostTraffic: !Ref AfterAllowTrafficLambdaFunction
       Environment:
         Variables:
           TABLE_NAME: Products
@@ -189,6 +205,36 @@ Resources:
             Method: post
             RestApiId: !Ref MarketplaceApi
             # Uses DefaultAuthorizer (MyLambdaAuthorizer)
+
+  # Pre-deployment validation hook
+  BeforeAllowTrafficLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
+      Handler: com.marketplace.deploy.BeforeAllowTrafficHandler::handleRequest
+      DeploymentPreference:
+        Enabled: false # Hooks themselves don't use deployment preferences
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action: "codedeploy:PutLifecycleEventHookExecutionStatus"
+              Resource: !Sub "arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentConfiguration}/*"
+
+  # Post-deployment validation hook
+  AfterAllowTrafficLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: target/secure-serverless-marketplace-1.0-SNAPSHOT.jar
+      Handler: com.marketplace.deploy.AfterAllowTrafficHandler::handleRequest
+      DeploymentPreference:
+        Enabled: false
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action: "codedeploy:PutLifecycleEventHookExecutionStatus"
+              Resource: !Sub "arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentConfiguration}/*"
 
   # External API Key stored in Secrets Manager
   LogisticsApiKey:
@@ -269,6 +315,102 @@ Resources:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: '*'
+
+  # Cognito User Pool for user registration and authentication
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: MarketplaceUserPool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: MarketplaceWebClient
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  # Cognito Identity Pool for providing temporary AWS credentials via STS
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: MarketplaceIdentityPool
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+
+  # IAM Role for authenticated users (Identity Pool)
+  CognitoAuthorizedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: CognitoS3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "arn:aws:s3:::${AssetsBucket}/*"
+
+  # IAM Role for unauthenticated users (Identity Pool)
+  CognitoUnauthorizedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": unauthenticated
+      Policies:
+        - PolicyName: CognitoUnauthDenyAll
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Deny"
+                Action: "*"
+                Resource: "*"
+
+  # Attachment of roles to the Identity Pool
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthorizedRole.Arn
+        unauthenticated: !GetAtt CognitoUnauthorizedRole.Arn
 
   # SSM Parameter for shared configuration (Table Name)
   TableParameter:

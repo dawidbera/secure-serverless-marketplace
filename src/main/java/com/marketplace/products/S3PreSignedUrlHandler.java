@@ -58,6 +58,13 @@ public class S3PreSignedUrlHandler implements RequestHandler<APIGatewayProxyRequ
         }
     }
 
+    /**
+     * Handles the GET request to generate a pre-signed S3 URL for a product asset.
+     *
+     * @param input   The API Gateway proxy request event.
+     * @param context The Lambda execution context.
+     * @return The API Gateway proxy response event containing the pre-signed URL.
+     */
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         try {

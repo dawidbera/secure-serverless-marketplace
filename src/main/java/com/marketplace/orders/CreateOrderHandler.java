@@ -59,6 +59,14 @@ public class CreateOrderHandler implements RequestHandler<APIGatewayProxyRequest
         this.objectMapper = new ObjectMapper();
     }
 
+    /**
+     * Handles the POST request to place an order.
+     * Implements optimistic locking using DynamoDB transactions.
+     *
+     * @param input   The API Gateway proxy request event.
+     * @param context The Lambda execution context.
+     * @return The API Gateway proxy response event.
+     */
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         try {

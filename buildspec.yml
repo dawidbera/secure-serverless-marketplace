@@ -21,4 +21,5 @@ phases:
 artifacts:
   files:
     - secure-serverless-marketplace/packaged.yaml
+    - secure-serverless-marketplace/appspec.yml
   discard-paths: yes

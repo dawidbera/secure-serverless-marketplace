@@ -10,12 +10,26 @@ import java.net.URISyntaxException;
  */
 public class ClientUtils {
 
+    /**
+     * Provides a default X-Ray configuration for AWS SDK clients.
+     * Adds the TracingInterceptor to the client configuration.
+     *
+     * @return A ClientOverrideConfiguration with X-Ray tracing enabled.
+     */
     public static ClientOverrideConfiguration getXRayConfig() {
         return ClientOverrideConfiguration.builder()
                 .addExecutionInterceptor(new TracingInterceptor())
                 .build();
     }
 
+    /**
+     * Configures a client builder with a custom endpoint if the AWS_ENDPOINT_URL
+     * environment variable is set. This is useful for local development with LocalStack.
+     *
+     * @param builder The AWS client builder to configure.
+     * @param <B>     The type of the client builder.
+     * @return The (potentially) modified client builder.
+     */
     public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, ?>> B configureEndpoint(B builder) {
         String endpoint = System.getenv("AWS_ENDPOINT_URL");
         if (endpoint != null && !endpoint.isEmpty()) {

@@ -71,6 +71,24 @@ awslocal ssm put-parameter --name "/marketplace/table_name" --type "String" --va
 awslocal secretsmanager delete-secret --secret-id "LogisticsApiKey" --force-delete-without-recovery 2>/dev/null || true
 awslocal secretsmanager create-secret --name "LogisticsApiKey" --secret-string '{"api_key": "super-secret-key-123"}' || true
 
+echo "Setting up Cognito resources..."
+# User Pool
+USER_POOL_ID=$(awslocal cognito-idp create-user-pool --pool-name MarketplaceUserPool --query 'UserPool.Id' --output text)
+echo "User Pool ID: $USER_POOL_ID"
+
+# User Pool Client
+CLIENT_ID=$(awslocal cognito-idp create-user-pool-client --user-pool-id $USER_POOL_ID --client-name MarketplaceWebClient --query 'UserPoolClient.ClientId' --output text)
+echo "User Pool Client ID: $CLIENT_ID"
+
+# Identity Pool
+IDENTITY_POOL_ID=$(awslocal cognito-identity create-identity-pool --identity-pool-name MarketplaceIdentityPool --no-allow-unauthenticated-identities --cognito-identity-providers ProviderName="cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID",ClientId="$CLIENT_ID" --query 'IdentityPoolId' --output text)
+echo "Identity Pool ID: $IDENTITY_POOL_ID"
+
+# Export IDs for tests or other scripts if needed
+export USER_POOL_ID
+export CLIENT_ID
+export IDENTITY_POOL_ID
+
 # Check if bucket exists, if not create it
 if ! awslocal s3 ls s3://marketplace-assets-000000000000 >/dev/null 2>&1; then
     awslocal s3 mb s3://marketplace-assets-000000000000

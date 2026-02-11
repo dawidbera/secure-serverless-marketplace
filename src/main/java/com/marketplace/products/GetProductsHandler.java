@@ -212,6 +212,13 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
         }
     }
 
+    /**
+     * Creates an APIGatewayProxyResponseEvent with the specified status code and body.
+     *
+     * @param statusCode The HTTP status code.
+     * @param body       The response body as a JSON string.
+     * @return The configured response event.
+     */
     private APIGatewayProxyResponseEvent createResponse(int statusCode, String body) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");

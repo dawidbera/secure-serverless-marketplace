@@ -1,0 +1,35 @@
+version: 0.0
+Resources:
+  - CreateOrderFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Name: "CreateOrderFunction"
+        Alias: "live"
+        CurrentVersion: "1"
+        TargetVersion: "2"
+  - CreateProductFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Name: "CreateProductFunction"
+        Alias: "live"
+        CurrentVersion: "1"
+        TargetVersion: "2"
+  - GetMyOrdersFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Name: "GetMyOrdersFunction"
+        Alias: "live"
+        CurrentVersion: "1"
+        TargetVersion: "2"
+  - GetAllProductsFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Name: "GetAllProductsFunction"
+        Alias: "live"
+        CurrentVersion: "1"
+        TargetVersion: "2"
+hooks:
+  # Pre-deployment validation hook
+  PreTraffic: "BeforeAllowTrafficLambdaFunction"
+  # Post-deployment validation hook
+  PostTraffic: "AfterAllowTrafficLambdaFunction"

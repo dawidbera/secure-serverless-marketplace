@@ -34,23 +34,78 @@ public class Order {
         this.timestamp = timestamp;
     }
 
+    /**
+     * Returns the unique identifier for the order.
+     *
+     * @return The order ID.
+     */
     @JsonProperty("orderId")
     public String getOrderId() { return orderId; }
+
+    /**
+     * Sets the unique identifier for the order.
+     *
+     * @param orderId The order ID to set.
+     */
     public void setOrderId(String orderId) { this.orderId = orderId; }
 
+    /**
+     * Returns the ID of the product being ordered.
+     *
+     * @return The product ID.
+     */
     @JsonProperty("productId")
     public String getProductId() { return productId; }
+
+    /**
+     * Sets the ID of the product being ordered.
+     *
+     * @param productId The product ID to set.
+     */
     public void setProductId(String productId) { this.productId = productId; }
 
+    /**
+     * Returns the ID of the user who placed the order.
+     *
+     * @return The user ID.
+     */
     @JsonProperty("userId")
     public String getUserId() { return userId; }
+
+    /**
+     * Sets the ID of the user who placed the order.
+     *
+     * @param userId The user ID to set.
+     */
     public void setUserId(String userId) { this.userId = userId; }
 
+    /**
+     * Returns the quantity of the product ordered.
+     *
+     * @return The quantity.
+     */
     @JsonProperty("quantity")
     public int getQuantity() { return quantity; }
+
+    /**
+     * Sets the quantity of the product ordered.
+     *
+     * @param quantity The quantity to set.
+     */
     public void setQuantity(int quantity) { this.quantity = quantity; }
 
+    /**
+     * Returns the timestamp when the order was placed.
+     *
+     * @return The timestamp.
+     */
     @JsonProperty("timestamp")
     public long getTimestamp() { return timestamp; }
+
+    /**
+     * Sets the timestamp when the order was placed.
+     *
+     * @param timestamp The timestamp to set.
+     */
     public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
 }
