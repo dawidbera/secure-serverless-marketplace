@@ -3,6 +3,108 @@
 A high-performance, secure backend for a digital marketplace leveraging modern cloud-native patterns.
 
 ## 🏗 Architecture
+
+```mermaid
+graph TD
+    Client[Client] -->|Request| APIGateway[API Gateway]
+    
+    subgraph "Authentication & Authorization"
+        APIGateway -->|Validate Token| Authorizer[Lambda Authorizer]
+        Authorizer -.->|Allow/Deny| APIGateway
+    end
+
+    subgraph "Compute Layer (Lambdas)"
+        APIGateway -->|GET /products| GetProducts[GetProductsHandler]
+        APIGateway -->|POST /orders| CreateOrder[CreateOrderHandler]
+        APIGateway -->|POST /products| CreateProduct[CreateProductHandler]
+        APIGateway -->|GET /asset| S3PreSigned[S3PreSignedUrlHandler]
+    end
+
+    subgraph "Persistence & Security"
+        GetProducts -->|Cache Check| Redis[(Redis)]
+        GetProducts -->|Query GSI1| DynamoDB[(DynamoDB)]
+        
+        CreateOrder -->|Atomic Transaction| DynamoDB
+        
+        CreateProduct -->|Encrypt PII| KMS[AWS KMS]
+        CreateProduct -->|Fetch API Key| SecretsManager[Secrets Manager]
+        CreateProduct -->|Put Item| DynamoDB
+        
+        S3PreSigned -->|Generate URL| S3[S3 Assets Bucket]
+        
+        GetProducts -->|Config| SSM[SSM Parameter Store]
+    end
+
+    classDef aws fill:#f9f,stroke:#333,stroke-width:2px;
+    class APIGateway,Authorizer,GetProducts,CreateOrder,CreateProduct,S3PreSigned,DynamoDB,S3,KMS,SecretsManager,SSM aws;
+```
+
+### 🔄 Key Process Flows
+
+#### Order Placement (Optimistic Locking)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AGW as API Gateway
+    participant AUTH as Lambda Authorizer
+    participant COH as CreateOrderHandler
+    participant DDB as DynamoDB
+
+    C->>AGW: POST /orders (Bearer Token)
+    AGW->>AUTH: Validate Token
+    AUTH-->>AGW: Allow + Context (user_id)
+    AGW->>COH: Invoke with Body + Context
+    
+    COH->>DDB: GetItem (Product SKU)
+    DDB-->>COH: Product Info (Stock, Version)
+    
+    Note over COH: Check stockAvailability
+    
+    COH->>DDB: TransactWriteItems
+    Note right of DDB: Condition: version = :v AND stock >= :q
+    
+    alt Success
+        DDB-->>COH: OK
+        COH-->>AGW: 201 Created
+        AGW-->>C: Order Details
+    else Condition Failed (Race Condition)
+        DDB-->>COH: TransactionCanceledException
+        COH-->>AGW: 409 Conflict
+        AGW-->>C: Error: Concurrent Update
+    end
+```
+
+#### Product Creation (Security & Cache)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AGW as API Gateway
+    participant CPH as CreateProductHandler
+    participant SM as Secrets Manager
+    participant KMS as AWS KMS
+    participant DDB as DynamoDB
+    participant R as Redis
+
+    C->>AGW: POST /products
+    AGW->>CPH: Invoke
+    
+    CPH->>SM: GetSecretValue (Logistics Key)
+    SM-->>CPH: API Key
+    
+    Note over CPH: Encrypt Supplier Email
+    CPH->>KMS: Encrypt (PII)
+    KMS-->>CPH: Ciphertext
+    
+    CPH->>DDB: PutItem (Product + Ciphertext)
+    DDB-->>CPH: OK
+    
+    CPH->>R: Flush/Invalidate Cache
+    R-->>CPH: OK
+    
+    CPH-->>AGW: 201 Created
+    AGW-->>C: Product Details
+```
+
 - **Compute:** AWS Lambda (Java 17)
 - **API:** Amazon API Gateway (Throttling: 10 RPS, Caching: 60s)
 - **Database:** Amazon DynamoDB (Single-table design)
