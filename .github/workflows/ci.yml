@@ -57,7 +57,9 @@ jobs:
     # Ensure LocalStack services are fully operational before proceeding to resource initialization
     - name: Wait for LocalStack to be ready
       run: |
-        for i in {1..60}; do
+        for i in {1..150}; do
+          echo "Checking LocalStack health..."
+          curl -s http://localstack:4566/_localstack/health || true
           curl -sf http://localstack:4566/_localstack/init/ready | grep -q '"completed": *true' && exit 0
           sleep 2
         done
