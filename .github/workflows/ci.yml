@@ -94,12 +94,13 @@ jobs:
         
         echo "LocalStack is ready. Starting SAM API..."
         cat env.json # Debug env vars
-        sam local start-api -p 3001 --env-vars env.json --log-file /tmp/sam-api.log &
+        sam local start-api -p 3001 --docker-network host --env-vars env.json --log-file /tmp/sam-api.log &
         
         # Wait for SAM API to be ready (up to 5 minutes)
         for i in {1..60}; do
           if curl -s http://localhost:3001/products > /dev/null; then
             echo "SAM API is ready!"
+            sleep 10 # Extra wait for stability
             exit 0
           fi
           if grep -q "Error" /tmp/sam-api.log; then
@@ -132,6 +133,10 @@ jobs:
         LOGISTICS_SECRET_ARN: LogisticsApiKey
         KMS_KEY_ID: dummy
         SAM_API_URL: http://localhost:3001
+
+    - name: Display SAM API logs on failure
+      if: failure()
+      run: cat /tmp/sam-api.log
 
     # Verify that the SAM template.yaml follows the correct CloudFormation and SAM syntax
     - name: Validate SAM Template
