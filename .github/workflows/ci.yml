@@ -60,7 +60,7 @@ jobs:
           echo "Waiting for LocalStack..."
           sleep 5
         done
-      timeout-minutes: 2
+      timeout-minutes: 5
 
     # Manually provision mock AWS resources in LocalStack for integration testing
     - name: Initialize LocalStack Resources
