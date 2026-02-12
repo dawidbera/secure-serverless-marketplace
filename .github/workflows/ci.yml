@@ -93,11 +93,12 @@ jobs:
         done
         
         # Determine Docker Bridge IP (usually 172.17.0.1)
-        DOCKER_GATEWAY_IP=$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
+        DOCKER_GATEWAY_IP=$(ip -4 addr show docker0 | grep -Po 'inet \K[\d.]+')
         echo "Docker Gateway IP: $DOCKER_GATEWAY_IP"
         
         # Inject the correct IP into env.json for this environment
-        sed -i "s/172.17.0.1/$DOCKER_GATEWAY_IP/g" env.json
+        # We replace localhost with the gateway IP so that the Lambda container can reach the host
+        sed -i "s/localhost/$DOCKER_GATEWAY_IP/g" env.json
         
         echo "Starting SAM API with updated env.json..."
         cat env.json
