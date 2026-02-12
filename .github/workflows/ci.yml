@@ -57,11 +57,12 @@ jobs:
     # Ensure LocalStack services are fully operational before proceeding to resource initialization
     - name: Wait for LocalStack to be ready
       run: |
-        until curl -s http://localstack:4566/_localstack/health | jq -e . > /dev/null; do
-          echo "Waiting for LocalStack general health endpoint..."
-          sleep 5
+        for i in {1..60}; do
+          curl -sf http://localstack:4566/_localstack/init/ready | grep -q '"completed": *true' && exit 0
+          sleep 2
         done
-      timeout-minutes: 5
+        echo "LocalStack not ready in time" && exit 1
+      timeout-minutes: 10
 
     # Manually provision mock AWS resources in LocalStack for integration testing
     - name: Initialize LocalStack Resources
@@ -93,7 +94,7 @@ jobs:
         AWS_SECRET_ACCESS_KEY: test
         AWS_REGION: us-east-1
         AWS_ENDPOINT_URL: http://localhost:4566
-        REDIS_HOST: localhost
+        REDIS_HOST: redis
         TABLE_NAME: Products
         LOGISTICS_SECRET_ARN: LogisticsApiKey
         KMS_KEY_ID: dummy
