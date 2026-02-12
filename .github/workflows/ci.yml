@@ -86,9 +86,22 @@ jobs:
     # Start SAM Local API to provide endpoints for end-to-end integration tests
     - name: Start SAM Local API
       run: |
-        sam local start-api --docker-network host --env-vars env.json --log-file /tmp/sam-api.log &
-        # Wait for SAM API to be ready
-        until curl -s http://localhost:3001/products > /dev/null; do
+        # Ensure LocalStack is truly ready before starting SAM
+        until curl -sf http://localhost:4566/_localstack/init/ready | grep -q '"completed": *true'; do
+          echo "Waiting for LocalStack to be fully ready for SAM..."
+          sleep 5
+        done
+        
+        echo "LocalStack is ready. Starting SAM API..."
+        cat env.json # Debug env vars
+        sam local start-api --env-vars env.json --log-file /tmp/sam-api.log &
+        
+        # Wait for SAM API to be ready (up to 5 minutes)
+        for i in {1..60}; do
+          if curl -s http://localhost:3001/products > /dev/null; then
+            echo "SAM API is ready!"
+            exit 0
+          fi
           if grep -q "Error" /tmp/sam-api.log; then
             echo "SAM API failed to start:"
             cat /tmp/sam-api.log
@@ -97,6 +110,9 @@ jobs:
           echo "Waiting for SAM API..."
           sleep 5
         done
+        echo "SAM API timed out"
+        cat /tmp/sam-api.log
+        exit 1
       env:
         AWS_ACCESS_KEY_ID: test
         AWS_SECRET_ACCESS_KEY: test
