@@ -18,7 +18,7 @@ jobs:
         ports:
           - 4566:4566
         env:
-          SERVICES: dynamodb,s3,ssm,secretsmanager,kms,iam,sts,lambda
+          SERVICES: dynamodb,s3,ssm,secretsmanager,kms
           DEBUG: 1
       
       # Redis is used for testing caching mechanisms within the marketplace
