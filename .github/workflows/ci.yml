@@ -92,18 +92,10 @@ jobs:
           sleep 5
         done
         
-        # Determine Docker Bridge IP (usually 172.17.0.1)
-        DOCKER_GATEWAY_IP=$(ip -4 addr show docker0 | grep -Po 'inet \K[\d.]+')
-        echo "Docker Gateway IP: $DOCKER_GATEWAY_IP"
-        
-        # Inject the correct IP into env.json for this environment
-        # We replace localhost with the gateway IP so that the Lambda container can reach the host
-        sed -i "s/localhost/$DOCKER_GATEWAY_IP/g" env.json
-        
-        echo "Starting SAM API with updated env.json..."
+        echo "LocalStack is ready. Starting SAM API..."
         cat env.json
         
-        sam local start-api -p 3001 --env-vars env.json --log-file /tmp/sam-api.log &
+        sam local start-api -p 3001 --docker-network host --env-vars env.json --log-file /tmp/sam-api.log &
         
         # Wait for SAM API to be ready (up to 5 minutes)
         for i in {1..60}; do
@@ -137,7 +129,7 @@ jobs:
         AWS_SECRET_ACCESS_KEY: test
         AWS_REGION: us-east-1
         AWS_ENDPOINT_URL: http://localhost:4566
-        REDIS_HOST: redis
+        REDIS_HOST: localhost
         TABLE_NAME: Products
         LOGISTICS_SECRET_ARN: LogisticsApiKey
         KMS_KEY_ID: dummy
