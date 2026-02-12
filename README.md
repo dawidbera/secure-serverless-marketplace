@@ -33,7 +33,7 @@ graph TD
         CreateProduct -->|Put Item| DynamoDB
         
         S3PreSigned -->|Generate URL| S3[S3 Assets Bucket]
-        Client -->|Direct Access (STS)| S3
+        Client -->|"Direct Access (STS)"| S3
         
         GetProducts -->|Config| SSM[SSM Parameter Store]
     end

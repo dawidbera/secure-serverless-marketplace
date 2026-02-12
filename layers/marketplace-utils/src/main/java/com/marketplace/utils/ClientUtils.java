@@ -32,6 +32,9 @@ public class ClientUtils {
      */
     public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, ?>> B configureEndpoint(B builder) {
         String endpoint = System.getenv("AWS_ENDPOINT_URL");
+        if (endpoint == null || endpoint.isEmpty()) {
+            endpoint = System.getProperty("AWS_ENDPOINT_URL");
+        }
         if (endpoint != null && !endpoint.isEmpty()) {
             System.out.println("Configuring client with endpoint: " + endpoint);
             try {

@@ -43,6 +43,9 @@ public class S3PreSignedUrlHandler implements RequestHandler<APIGatewayProxyRequ
         } else {
             S3Presigner.Builder builder = S3Presigner.builder();
             String endpoint = System.getenv("AWS_ENDPOINT_URL");
+            if (endpoint == null || endpoint.isEmpty()) {
+                endpoint = System.getProperty("AWS_ENDPOINT_URL");
+            }
             if (endpoint != null && !endpoint.isEmpty()) {
                 try {
                     builder.endpointOverride(new java.net.URI(endpoint));
