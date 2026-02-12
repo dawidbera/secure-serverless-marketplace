@@ -13,15 +13,6 @@ jobs:
     timeout-minutes: 15
     
     services:
-      # LocalStack provides a local emulation of AWS cloud services
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: dynamodb,s3,ssm,secretsmanager,kms
-          DEBUG: 1
-      
       # Redis is used for testing caching mechanisms within the marketplace
       redis:
         image: redis:alpine
@@ -54,17 +45,22 @@ jobs:
     - name: Build Main Project and Run Unit Tests
       run: mvn clean package
 
-    # Ensure LocalStack services are fully operational before proceeding to resource initialization
-    - name: Wait for LocalStack to be ready
+    - name: Start LocalStack
+      uses: localstack/setup-localstack@v0.2.5
+      with:
+        image-tag: '3.7.0'
+        install-awslocal: 'true'
+        services: dynamodb,s3,ssm,secretsmanager,kms
+    
+    - name: Debug Docker containers
+      run: docker ps -a
+
+    - name: Configure AWS CLI for LocalStack
       run: |
-        for i in {1..150}; do
-          echo "Checking LocalStack health..."
-          curl -s http://localstack:4566/_localstack/health || true
-          curl -sf http://localstack:4566/_localstack/init/ready | grep -q '"completed": *true' && exit 0
-          sleep 2
-        done
-        echo "LocalStack not ready in time" && exit 1
-      timeout-minutes: 10
+        aws configure set aws_access_key_id test
+        aws configure set aws_secret_access_key test
+        aws configure set region us-east-1
+        echo "AWS_ENDPOINT_URL=http://localhost:4566" >> $GITHUB_ENV
 
     # Manually provision mock AWS resources in LocalStack for integration testing
     - name: Initialize LocalStack Resources
