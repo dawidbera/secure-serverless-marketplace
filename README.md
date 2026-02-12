@@ -210,6 +210,14 @@ chmod +x run_all.sh
 ./run_all.sh
 ```
 
+## ⚙️ CI/CD Pipeline
+
+The project includes a **GitHub Actions** workflow (`.github/workflows/ci.yml`) that automates:
+- **Build**: Compiles the Marketplace Utils layer and the main application.
+- **Unit Testing**: Runs Java unit tests on every push.
+- **Integration Testing**: Spin up **LocalStack** and **Redis** as services in the runner to verify end-to-end flows in a clean environment.
+- **SAM Validation**: Ensures the `template.yaml` is valid and ready for deployment.
+
 ## 🧠 Technical Lessons Learned (Gotchas)
 - **Networking:** On Linux, when using SAM inside a container, use the host IP (e.g., `172.17.0.1` from `docker0`) for `AWS_ENDPOINT_URL` to reach LocalStack.
 - **S3 Path Style:** LocalStack requires `pathStyleAccessEnabled(true)` for both S3 Client and S3 Presigner to correctly resolve buckets without DNS manipulation.
