@@ -92,8 +92,16 @@ jobs:
           sleep 5
         done
         
-        echo "LocalStack is ready. Starting SAM API..."
-        cat env.json # Debug env vars
+        # Determine Docker Bridge IP (usually 172.17.0.1)
+        DOCKER_GATEWAY_IP=$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
+        echo "Docker Gateway IP: $DOCKER_GATEWAY_IP"
+        
+        # Inject the correct IP into env.json for this environment
+        sed -i "s/172.17.0.1/$DOCKER_GATEWAY_IP/g" env.json
+        
+        echo "Starting SAM API with updated env.json..."
+        cat env.json
+        
         sam local start-api -p 3001 --env-vars env.json --log-file /tmp/sam-api.log &
         
         # Wait for SAM API to be ready (up to 5 minutes)
