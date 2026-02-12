@@ -86,7 +86,7 @@ jobs:
     # Execute integration tests that depend on LocalStack and Redis
     - name: Run Integration Tests
       run: |
-        mvn test -Dtest="*IntegrationTest" -DAWS_ENDPOINT_URL=$AWS_ENDPOINT_URL
+        mvn test -Dtest="com.marketplace.it.**" -DAWS_ENDPOINT_URL=$AWS_ENDPOINT_URL
       env:
         AWS_ACCESS_KEY_ID: test
         AWS_SECRET_ACCESS_KEY: test
