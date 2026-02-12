@@ -94,7 +94,7 @@ jobs:
         
         echo "LocalStack is ready. Starting SAM API..."
         cat env.json # Debug env vars
-        sam local start-api --env-vars env.json --log-file /tmp/sam-api.log &
+        sam local start-api -p 3001 --env-vars env.json --log-file /tmp/sam-api.log &
         
         # Wait for SAM API to be ready (up to 5 minutes)
         for i in {1..60}; do
