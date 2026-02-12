@@ -69,16 +69,24 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.15.2</version>
         </dependency>
-        <!-- AWS X-Ray SDK dependencies -->
+        <dependency>
+            <groupId>com.marketplace</groupId>
+            <artifactId>marketplace-utils</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- AWS X-Ray SDK dependencies (provided by layer in runtime, but needed for compilation) -->
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-xray-recorder-sdk-core</artifactId>
             <version>2.14.0</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-xray-recorder-sdk-aws-sdk-v2</artifactId>
             <version>2.14.0</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- Testing Dependencies -->

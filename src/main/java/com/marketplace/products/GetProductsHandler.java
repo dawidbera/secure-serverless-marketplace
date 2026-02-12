@@ -81,7 +81,7 @@ public class GetProductsHandler implements RequestHandler<APIGatewayProxyRequest
         } else {
             String ssmParamName = System.getenv("SSM_PARAMETER_NAME");
             if (ssmParamName != null) {
-                this.tableName = ssmClient.getParameter(GetParameterRequest.builder()
+                this.tableName = this.ssmClient.getParameter(GetParameterRequest.builder()
                         .name(ssmParamName)
                         .build()).parameter().value();
             } else {
