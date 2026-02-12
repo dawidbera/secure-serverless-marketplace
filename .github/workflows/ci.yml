@@ -83,7 +83,26 @@ jobs:
         AWS_SECRET_ACCESS_KEY: test
         AWS_DEFAULT_REGION: us-east-1
 
-    # Execute integration tests that depend on LocalStack and Redis
+    # Start SAM Local API to provide endpoints for end-to-end integration tests
+    - name: Start SAM Local API
+      run: |
+        sam local start-api --docker-network host --env-vars env.json --log-file /tmp/sam-api.log &
+        # Wait for SAM API to be ready
+        until curl -s http://localhost:3001/products > /dev/null; do
+          if grep -q "Error" /tmp/sam-api.log; then
+            echo "SAM API failed to start:"
+            cat /tmp/sam-api.log
+            exit 1
+          fi
+          echo "Waiting for SAM API..."
+          sleep 5
+        done
+      env:
+        AWS_ACCESS_KEY_ID: test
+        AWS_SECRET_ACCESS_KEY: test
+        AWS_DEFAULT_REGION: us-east-1
+
+    # Execute integration tests that depend on LocalStack, Redis, and SAM Local API
     - name: Run Integration Tests
       run: |
         mvn test -Dtest="com.marketplace.it.**" -DAWS_ENDPOINT_URL=$AWS_ENDPOINT_URL
@@ -96,6 +115,7 @@ jobs:
         TABLE_NAME: Products
         LOGISTICS_SECRET_ARN: LogisticsApiKey
         KMS_KEY_ID: dummy
+        SAM_API_URL: http://localhost:3001
 
     # Verify that the SAM template.yaml follows the correct CloudFormation and SAM syntax
     - name: Validate SAM Template
