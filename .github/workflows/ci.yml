@@ -56,8 +56,8 @@ jobs:
     # Ensure LocalStack services are fully operational before proceeding to resource initialization
     - name: Wait for LocalStack to be ready
       run: |
-        until curl -s http://localstack:4566/_localstack/health | grep '"s3": "running"' > /dev/null; do
-          echo "Waiting for LocalStack..."
+        until curl -s http://localstack:4566/_localstack/health | jq -e . > /dev/null; do
+          echo "Waiting for LocalStack general health endpoint..."
           sleep 5
         done
       timeout-minutes: 5
