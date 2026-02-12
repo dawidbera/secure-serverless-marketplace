@@ -93,15 +93,13 @@ jobs:
         done
         
         echo "LocalStack is ready. Starting SAM API..."
-        cat env.json
-        
         sam local start-api -p 3001 --docker-network host --env-vars env.json --log-file /tmp/sam-api.log &
         
         # Wait for SAM API to be ready (up to 5 minutes)
         for i in {1..60}; do
           if curl -s http://localhost:3001/products > /dev/null; then
             echo "SAM API is ready!"
-            sleep 10 # Extra wait for stability
+            sleep 30 # Wait for full function initialization
             exit 0
           fi
           if grep -q "Error" /tmp/sam-api.log; then
